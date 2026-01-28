@@ -1,15 +1,15 @@
 require("dotenv").config();
-console.log("GOOGLE EMAIL:", process.env.GOOGLE_CLIENT_EMAIL);
-console.log("KEY PREVIEW:", process.env.GOOGLE_PRIVATE_KEY?.slice(0, 40));
 
 const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
-
 const { Resend } = require("resend");
-const { google } = require("googleapis");
 
 const app = express();
+
+// ===============================
+// MIDDLEWARE
+// ===============================
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -18,30 +18,19 @@ app.use(bodyParser.json());
 // RESEND SETUP
 // ===============================
 
+if (!process.env.RESEND_API_KEY) {
+  throw new Error("Missing RESEND_API_KEY in environment variables");
+}
+
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // ===============================
-// GOOGLE SHEETS SETUP
+// HEALTH CHECK (OPTIONAL)
 // ===============================
 
-const auth = new google.auth.JWT({
-email: process.env.GOOGLE_CLIENT_EMAIL,
-key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
-scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+app.get("/", (req, res) => {
+  res.send("Adam CG Lead API is running ✅");
 });
-
-
-let sheets;
-
-
-async function initGoogleSheets() {
-await auth.authorize();
-sheets = google.sheets({ version: "v4", auth });
-console.log("Google Sheets Connected ✅");
-}
-
-
-initGoogleSheets();
 
 // ===============================
 // SUBMIT LEAD API
@@ -51,10 +40,14 @@ app.post("/submitlead", async (req, res) => {
   try {
     const { fullName, email, phone, subject, message } = req.body;
 
-    if (!fullName || !email || !phone) {
+    // ===============================
+    // VALIDATION
+    // ===============================
+
+    if (!fullName || !email || !phone || !subject || !message) {
       return res.status(400).json({
         success: false,
-        message: "Requried feilds are Name, Email and Phone Number",
+        message: "All fields are required",
       });
     }
 
@@ -67,13 +60,16 @@ app.post("/submitlead", async (req, res) => {
       to: ["adam@adamcg.uk"],
       subject: "🚀 New Lead Received",
       html: `
-        <h2>New Lead Details</h2>
+        <h2>New Lead Received</h2>
 
         <p><strong>Name:</strong> ${fullName}</p>
         <p><strong>Email:</strong> ${email}</p>
         <p><strong>Phone:</strong> ${phone}</p>
         <p><strong>Subject:</strong> ${subject}</p>
-        <p><strong>Message:</strong> ${message}</p>
+        <p><strong>Message:</strong><br/>${message}</p>
+
+        <hr/>
+        <p>Sent from Adam CG Website</p>
       `,
     });
 
@@ -84,13 +80,20 @@ app.post("/submitlead", async (req, res) => {
     await resend.emails.send({
       from: "Adam CG <support@adamcg.uk>",
       to: [email],
-      subject: "We Received Your Message",
+      subject: "We Have Received Your Message",
       html: `
         <p>Hi ${fullName},</p>
 
         <p>Thank you for contacting Adam CG.</p>
 
-        <p>Our team has received your message and will reach out to you shortly.</p>
+        <p>We have received your message and our team will get back to you shortly.</p>
+
+        <br/>
+
+        <p><strong>Your Message:</strong></p>
+        <p>${message}</p>
+
+        <br/>
 
         <p>Best Regards,<br/>
         Adam CG Team</p>
@@ -98,49 +101,26 @@ app.post("/submitlead", async (req, res) => {
     });
 
     // ===============================
-    // SAVE TO GOOGLE SHEET
-    // ===============================
-
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: process.env.SPREADSHEET_ID,
-      range: "Sheet1!A:F",
-      valueInputOption: "USER_ENTERED",
-
-      requestBody: {
-        values: [
-          [
-            fullName,
-            email,
-            phone,
-            subject,
-            message,
-            new Date().toLocaleString(),
-          ],
-        ],
-      },
-    });
-
-    // ===============================
-    // RESPONSE
+    // SUCCESS RESPONSE
     // ===============================
 
     res.json({
       success: true,
-      message: "Lead submitted successfully",
+      message: "Lead submitted successfully. Emails sent.",
     });
 
   } catch (error) {
-    console.error("ERROR:", error);
+    console.error("EMAIL ERROR:", error);
 
     res.status(500).json({
       success: false,
-      message: "Server error",
+      message: "Something went wrong while sending emails",
     });
   }
 });
 
 // ===============================
-// SERVER START
+// START SERVER
 // ===============================
 
 const PORT = process.env.PORT || 3000;
