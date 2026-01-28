@@ -1,5 +1,6 @@
 require("dotenv").config();
 console.log("GOOGLE EMAIL:", process.env.GOOGLE_CLIENT_EMAIL);
+console.log("KEY PREVIEW:", process.env.GOOGLE_PRIVATE_KEY?.slice(0, 40));
 
 const express = require("express");
 const bodyParser = require("body-parser");
